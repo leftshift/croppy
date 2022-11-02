@@ -84,7 +84,9 @@ def rect_sort_keyfn(rect: Rect):
 class ContourRects(Stage):
     def process(self, contours):
         spacer_rects = list(
-            map(lambda contour: Rect._make(cv2.boundingRect(contour)), contours)
+            map(lambda contour: Rect._make(
+                cv2.boundingRect(contour)
+                ), contours)
         )
         spacer_rects.sort(key=rect_sort_keyfn)
         return spacer_rects
@@ -163,7 +165,7 @@ class ImgFinder:
                         self.trackbarCallback(field.name))
 
     def update_stage(self):
-        img_copy = img.copy()
+        img_copy = self.img.copy()
         
         prev_res = self.results[self.current_stage_index]
         res = self.stage.process(prev_res)
@@ -191,11 +193,14 @@ class ImgFinder:
         if event == 13:
             self.progress_stage()
 
+    def get_rects(self):
+        return self.results[-1]
+
 window = 'main'
 img = cv2.imread(sys.argv[1], cv2.IMREAD_UNCHANGED)
 
 def main():
-    finder = ImgFinder(img)
+    finder = ImgFinder(img[700:, :])
     finder.run()
     while True:
         code = cv2.waitKeyEx()
