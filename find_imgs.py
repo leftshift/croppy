@@ -1,3 +1,4 @@
+from typing import Callable, Any
 import sys
 from collections import namedtuple
 from dataclasses import dataclass, field, fields
@@ -82,11 +83,22 @@ def rect_sort_keyfn(rect: Rect):
 
 @dataclass
 class ContourRects(Stage):
+    min_height: int = field(default=100, metadata={
+        'expose': True,
+        'max': 5000
+        })
+    min_width: int = field(default=500, metadata={
+        'expose': True,
+        'max': 5000
+        })
     def process(self, contours):
         spacer_rects = list(
             map(lambda contour: Rect._make(
                 cv2.boundingRect(contour)
                 ), contours)
+        )
+        spacer_rects = list(
+            filter(lambda r: r.h >= self.min_height and r.w >= self.min_width, spacer_rects)
         )
         spacer_rects.sort(key=rect_sort_keyfn)
         return spacer_rects
@@ -99,6 +111,14 @@ class ContourRects(Stage):
 
 @dataclass
 class ImgRects(Stage):
+    grow_width: int = field(default=50, metadata={
+        'expose': True,
+        'max': 200
+        })
+    grow_height: int = field(default=50, metadata={
+        'expose': True,
+        'max': 200
+        })
     def process(self, spacer_rects):
         # find pictures between spacers
         picture_rects = []
@@ -116,6 +136,14 @@ class ImgRects(Stage):
             y = prev_rect.y + prev_rect.h
             w = max(prev_rect.x + prev_rect.w, rect.x + rect.w) - x
             h = rect.y - y
+
+            x -= self.grow_width//2
+            x = max(x, 0)
+            y -= self.grow_height//2
+            y = max(y, 0)
+            w += self.grow_width
+            h += self.grow_height
+
             picture = Rect(x,y,w,h)
             picture_rects.append(picture)
 
@@ -138,17 +166,19 @@ class ImgFinder:
         ImgRects()
     ]
 
-    def __init__(self, img: cv2.Mat):
+    def __init__(self):
         self.current_stage_index = 0
-        self.img = img
-        self.results = [img, None, None, None, None, None]
+        self.img: cv2.Mat
+        self.results = []
+        self.finish_callback: Callable[[list[Rect]], Any] = lambda x: None
+
+    def load_img(self, path):
+        self.img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+        self.results = [self.img, None, None, None, None, None]
 
     @property
     def stage(self):
         return self.stages[self.current_stage_index]
-
-    # prev_res
-    #current_res
 
     def trackbarCallback(self, field: str):
         def callback(val):
@@ -182,31 +212,52 @@ class ImgFinder:
         self.update_stage()
         self.add_trackbars()
 
-    def run(self):
-        self.show_stage()
-
-    def progress_stage(self):
-        self.current_stage_index += 1
-        self.show_stage()
-
-    def handle_event(self, event: int):
-        if event == 13:
-            self.progress_stage()
-
     def get_rects(self):
         return self.results[-1]
 
+    def progress_stage(self) -> bool:
+        if self.current_stage_index >= len(self.stages) - 1:
+            self.output_result()
+            print(self.get_rects())
+            return False
+        else:
+            self.current_stage_index += 1
+            self.show_stage()
+            return True
+
+    def output_result(self):
+        self.finish_callback(self.get_rects())
+
+    def handle_event(self, event: int) -> bool:
+        if event == 13:
+            return self.progress_stage()
+        return True
+
+    def handle_events(self):
+        while True:
+            code = cv2.waitKeyEx()
+            print(code)
+            if code == 113 or code == 27:
+                break
+
+            should_continue = self.handle_event(code)
+
+            if not should_continue:
+                cv2.destroyAllWindows()
+                break
+
+    def run(self):
+        self.show_stage()
+        self.handle_events()
+
+
 window = 'main'
-img = cv2.imread(sys.argv[1], cv2.IMREAD_UNCHANGED)
 
 def main():
-    finder = ImgFinder(img[700:, :])
+    finder = ImgFinder()
+    finder.load_img(sys.argv[1])
     finder.run()
-    while True:
-        code = cv2.waitKeyEx()
-        print(code)
-        if code == 113 or code == 27:
-            break
-        finder.handle_event(code)
 
-main()
+
+if __name__ == '__main__':
+    main()
