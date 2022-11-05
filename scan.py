@@ -1,11 +1,11 @@
 import subprocess
+import os
 import os.path
-from find_imgs import ImgFinder, Rect
 
 SCANIMG_FLAGS = [
-    "--device-name", "epkowa:interpreter:002:009",
+    "--device-name", "epkowa:interpreter:002:017",
     "--source", "Transparency Unit",
-    "--resolution", "3200dpi",
+    "--resolution", "1600dpi", #"3200dpi",
     "--depth", "16",
     "--format", "tiff",
     "--progress",
@@ -14,20 +14,16 @@ SCANIMG_FLAGS = [
     "-y", "170mm"
 ]
 
-CONVERT_DEPTH_FLAGS = [
-    "-depth", "8"
-]
-
 class ScanManager:
 
     def __init__(self):
         self.tmp = 'tmp'
+        self.scanfiles_fifo_path = os.path.join(self.tmp, 'scanfiles')
         self.scan_index: int = 0
-        self.photo_index: int = 0
 
-        self.img_finder = ImgFinder()
-
-    def scan_image(self, out_path: str):
+    def call_scanimage(self, out_path: str):
+        print(f"Scanning to {out_path}")
+        print("Press button on scanner to start scanning")
         res = subprocess.run(
             ["scanimage", *SCANIMG_FLAGS,
              "--output-file", out_path]
@@ -35,47 +31,22 @@ class ScanManager:
         print(res)
         res.check_returncode()
 
-    def gen_low_depth(self, in_path: str, out_path: str):
-        res = subprocess.run([
-            "convert", in_path,
-             *CONVERT_DEPTH_FLAGS, out_path
-        ])
 
-        res.check_returncode()
-
-    def scan_cut(self):
+    def scan(self):
         slide_file = f"{self.scan_index}.tiff"
         slide_path = os.path.join(self.tmp, slide_file)
-        slide_low_file = f"{self.scan_index}.low.tiff"
-        slide_low_path = os.path.join(self.tmp, slide_low_file)
 
-        self.scan_image(slide_path)
-        self.gen_low_depth(slide_path, slide_low_path)
-
-        self.img_finder.finish_callback = lambda r: self.crop(slide_path, r)
-        self.img_finder.load_img(slide_low_path)
-        self.img_finder.run()
-
-    def crop(self, in_path, rects: list[Rect]):
-        for r in rects:
-            crop_string = f"{r.w}x{r.h}+{r.x}+{r.y}"
-            out_path = f"{self.photo_index:0>2}.tiff"
-            res = subprocess.run([
-                "convert", in_path,
-                "-crop", crop_string,
-                out_path
-            ])
-            res.check_returncode()
-            self.photo_index +=1
-        self.scan_index += 1
+        self.call_scanimage(slide_path)
+        self.scanfiles_fifo.write(slide_path + "\n")
+        self.scanfiles_fifo.flush()
+        self.scan_index +=1
 
     def run(self):
-        res = input("Enter number of first image [0]:")
-        try:
-            self.photo_index = int(res)
-        except ValueError:
-            pass
-        self.scan_cut()
+        os.makedirs(self.tmp, exist_ok=True)
+        os.mkfifo(self.scanfiles_fifo_path)
+        self.scanfiles_fifo = open(self.scanfiles_fifo_path, 'w')
+        while True:
+            self.scan()
 
 def main():
     m = ScanManager()
