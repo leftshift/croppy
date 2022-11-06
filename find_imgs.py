@@ -45,11 +45,11 @@ class Morph(Stage):
 
     opening_kernel_x: int = field(default=25, metadata={
         'expose': True,
-        'max': 100
+        'max': 500
         })
     opening_kernel_y: int = field(default=10, metadata={
         'expose': True,
-        'max': 100
+        'max': 500
         })
 
     def process(self, img):
@@ -78,12 +78,12 @@ class Contours(Stage):
 
 
 def rect_sort_keyfn(rect: Rect):
-    return ((round(rect.x/1000),rect.y))
+    return ((round(rect.x/5000),rect.y))
 
 
 @dataclass
 class ContourRects(Stage):
-    min_height: int = field(default=100, metadata={
+    min_height: int = field(default=50, metadata={
         'expose': True,
         'max': 5000
         })
@@ -113,11 +113,11 @@ class ContourRects(Stage):
 class ImgRects(Stage):
     grow_width: int = field(default=50, metadata={
         'expose': True,
-        'max': 200
+        'max': 500
         })
     grow_height: int = field(default=50, metadata={
         'expose': True,
-        'max': 200
+        'max': 500
         })
     def process(self, spacer_rects):
         # find pictures between spacers
