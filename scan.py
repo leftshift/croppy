@@ -5,13 +5,13 @@ import os.path
 SCANIMG_FLAGS = [
     "--device-name", "epkowa:interpreter:002:017",
     "--source", "Transparency Unit",
-    "--resolution", "1600dpi", #"3200dpi",
+    "--resolution", "3200dpi",
     "--depth", "16",
     "--format", "tiff",
     "--progress",
     "--wait-for-button",
     "-t", "5mm",
-    "-y", "170mm"
+    "-y", "200mm" #"170mm"
 ]
 
 class ScanManager:
