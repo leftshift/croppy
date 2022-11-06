@@ -284,12 +284,13 @@ class ImgFinder:
 
     def progress_stage(self, forward: bool, skip: bool = False) -> bool:
         increment = 1 if forward else -1
+        max_stage = len(self.stages)
 
         if not skip:
             return self.set_stage(self.current_stage_index + increment)
         else:
             i = self.current_stage_index + increment
-            while not self.stages[i][1]:
+            while i >= 0 and i < max_stage and not self.stages[i][1]:
                 i += increment
             return self.set_stage(i)
 
