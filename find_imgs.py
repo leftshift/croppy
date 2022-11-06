@@ -174,6 +174,7 @@ class ImgFinder:
 
     def load_img(self, path):
         self.img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
+        self.current_stage_index = 0
         self.results = [self.img, None, None, None, None, None]
 
     @property
