@@ -10,12 +10,34 @@ Rect = namedtuple('Rect', ['x', 'y', 'w', 'h'])
 
 @dataclass
 class Stage(ABC):
+    """Base class for a processing stage.
+    Define parameters as `dataclass.field`s. If they are defined with a metadata dict
+    with `expose` set to true, a slider to adjust the value with the specified `max` value
+    will be shown in the opencv window.
+    """
+
     @abstractmethod
     def process(self, prev_res):
+        """Run processing based on result of previous stage.
+        Return result of this stage.
+        """
         pass
 
     @abstractmethod
-    def preview(self, res, img: cv2.Mat) -> cv2.Mat:
+    def preview(self, res, img: cv2.Mat) -> tuple[cv2.Mat, str]:
+        """Provide a user-friendly preview of the stage's result.
+        If the result of this stage itself is an image, it might make sense to just return
+        this. However, if the result is more abstract, the base image can be annotated instead.
+
+        Arugments:
+        res -- the result of this stage returned by `process`
+        img -- a copy of the original base image
+
+        Returns:
+        (img, hint):
+            img -- cv2.mat that will be displayed in the window
+            hint -- optional hint text that will be shown at the top of the window
+        """
         pass
 
 @dataclass
@@ -30,22 +52,35 @@ class Binarize(Stage):
         return cv2.threshold(gray_img, self.threshold, 255, cv2.THRESH_BINARY)[1]
 
     def preview(self, res, img):
-        return res
+        hint = "adjust so areas on film between photos are white, but as little as possible image areas"
+        return (res, hint)
 
 @dataclass
-class Morph(Stage):
+class Close(Stage):
     closing_kernel_x: int = field(default=10, metadata={
         'expose': True,
         'max': 100
         })
-    closing_kernel_y: int = field(default=50, metadata={
+    closing_kernel_y: int = field(default=10, metadata={
         'expose': True,
         'max': 100
         })
 
-    opening_kernel_x: int = field(default=25, metadata={
+    def process(self, img):
+        # close to get rid of small light areas
+        kernel = np.ones((self.closing_kernel_y, self.closing_kernel_x), np.uint8)
+        closing = cv2.morphologyEx(img, cv2.MORPH_CLOSE, kernel, iterations=2)
+        return closing
+
+    def preview(self, res, img):
+        hint = "adjust so white areas between images are continuous"
+        return (res, hint)
+
+@dataclass
+class Open(Stage):
+    opening_kernel_x: int = field(default=100, metadata={
         'expose': True,
-        'max': 500
+        'max': 1000
         })
     opening_kernel_y: int = field(default=10, metadata={
         'expose': True,
@@ -53,18 +88,15 @@ class Morph(Stage):
         })
 
     def process(self, img):
-        # close to get rid of small light areas
-        kernel = np.ones((self.closing_kernel_x, self.closing_kernel_y), np.uint8)
-        closing = cv2.morphologyEx(img, cv2.MORPH_OPEN, kernel, iterations=2)
-
         # open to get rid of black lines in light areas
-        kernel2 = np.ones((self.opening_kernel_x, self.opening_kernel_y), np.uint8)
-        opening = cv2.morphologyEx(closing, cv2.MORPH_CLOSE, kernel2, iterations=1)
-
+        kernel = np.ones((self.opening_kernel_y, self.opening_kernel_x), np.uint8)
+        opening = cv2.morphologyEx(img, cv2.MORPH_OPEN, kernel, iterations=1)
         return opening
 
     def preview(self, res, img):
-        return res
+        hint = "adjust so white between image border and carrier disappear"
+        return (res, hint)
+
 
 @dataclass
 class Contours(Stage):
@@ -74,7 +106,7 @@ class Contours(Stage):
 
     def preview(self, res, img):
         cv2.drawContours(img, res, -1, (255,0,0), 3)
-        return img
+        return (img, None)
 
 
 def rect_sort_keyfn(rect: Rect):
@@ -105,9 +137,10 @@ class ContourRects(Stage):
 
     def preview(self, res, img):
         for i, r in enumerate(res):
-            cv2.rectangle(img, (r.x,r.y),(r.x+r.w,r.y+r.h),(0,0,255),4)
-            cv2.putText(img, str(i), (r.x, r.y+r.h), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 4, (0,0,255), 4)
-        return img
+            cv2.rectangle(img, (r.x,r.y),(r.x+r.w,r.y+r.h),(0,0,255),8)
+            cv2.putText(img, str(i), (r.x, r.y+r.h), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 4, (0,0,255), 8)
+        hint = f"Found {len(res)} spacer rectangles"
+        return (img, hint)
 
 @dataclass
 class ImgRects(Stage):
@@ -152,9 +185,10 @@ class ImgRects(Stage):
     
     def preview(self, picture_rects, img):
         for i, r in enumerate(picture_rects):
-            cv2.rectangle(img, (r.x,r.y),(r.x+r.w,r.y+r.h),(0,255,0),4)
-            cv2.putText(img, str(i), (r.x, r.y+r.h), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 4, (0,255,0), 4)
-        return img
+            cv2.rectangle(img, (r.x,r.y),(r.x+r.w,r.y+r.h),(0,255,0),8)
+            cv2.putText(img, str(i), (r.x, r.y+r.h), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 4, (0,255,0), 8)
+        hint = f"Found {len(picture_rects)} pictures"
+        return (img, hint)
 
 
 class ImgFinder:
@@ -202,13 +236,11 @@ class ImgFinder:
                         self.trackbarCallback(field.name))
 
     def get_result(self, stage_index: int, refresh: bool = False):
-        print(f"get_result of stage {stage_index}, refresh {refresh}")
         result_index = stage_index + 1
 
         if result_index < len(self.results) and not refresh:
             return self.results[result_index]
         else:
-            print(f"generating result of stage {stage_index}")
             prev_res = self.get_result(stage_index - 1)
             res = self.stages[stage_index][0].process(prev_res)
 
@@ -223,11 +255,15 @@ class ImgFinder:
         res = self.get_result(self.current_stage_index, True)
         preview, hint = self.stage.preview(res, img_copy)
         cv2.imshow(window, preview)
+        if hint:
+            cv2.displayOverlay(window, hint)
 
     def show_stage(self):
         cv2.destroyAllWindows()
         cv2.namedWindow(window, cv2.WINDOW_GUI_EXPANDED)
 
+        window_title = f"Stage {self.current_stage_index+1}: {self.stage.__class__.__name__}"
+        cv2.setWindowTitle(window, window_title)
         self.update_stage()
         self.add_trackbars()
 
