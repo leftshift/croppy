@@ -55,7 +55,7 @@ class CropManager:
         scanfiles_fifo = open(self.scanfiles_fifo_path, 'r')
 
         for path in scanfiles_fifo:
-            self.convert_crop(path)
+            self.convert_crop(path.strip())
 
 def main():
     photo_index = 0

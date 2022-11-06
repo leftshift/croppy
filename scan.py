@@ -43,7 +43,12 @@ class ScanManager:
 
     def run(self):
         os.makedirs(self.tmp, exist_ok=True)
-        os.mkfifo(self.scanfiles_fifo_path)
+        try:
+            os.mkfifo(self.scanfiles_fifo_path)
+        except FileExistsError:
+            pass
+
+        print("opening fifo tmp/scanfiles, please start crop.py…")
         self.scanfiles_fifo = open(self.scanfiles_fifo_path, 'w')
         while True:
             self.scan()
