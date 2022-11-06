@@ -158,28 +158,30 @@ class ImgRects(Stage):
 
 
 class ImgFinder:
-    stages = [
-        Binarize(),
-        Morph(),
-        Contours(),
-        ContourRects(),
-        ImgRects()
-    ]
 
     def __init__(self):
+        self.stages: list[tuple[Stage, bool]] =  [
+            (Binarize(), True),
+            (Close(), False),
+            (Open(), False),
+            (Contours(), False),
+            (ContourRects(), False),
+            (ImgRects(), True)
+        ]
+
         self.current_stage_index = 0
         self.img: cv2.Mat
-        self.results = []
+        self.results: list[Any] = []
         self.finish_callback: Callable[[list[Rect]], Any] = lambda x: None
 
     def load_img(self, path):
         self.img = cv2.imread(path, cv2.IMREAD_UNCHANGED)
         self.current_stage_index = 0
-        self.results = [self.img, None, None, None, None, None]
+        self.results = [self.img]
 
     @property
-    def stage(self):
-        return self.stages[self.current_stage_index]
+    def stage(self) -> Stage:
+        return self.stages[self.current_stage_index][0]
 
     def trackbarCallback(self, field: str):
         def callback(val):
@@ -195,15 +197,27 @@ class ImgFinder:
                         field.name, window, field.default, m['max'],
                         self.trackbarCallback(field.name))
 
+    def get_result(self, stage_index: int, refresh: bool = False):
+        print(f"get_result of stage {stage_index}, refresh {refresh}")
+        result_index = stage_index + 1
+
+        if result_index < len(self.results) and not refresh:
+            return self.results[result_index]
+        else:
+            print(f"generating result of stage {stage_index}")
+            prev_res = self.get_result(stage_index - 1)
+            res = self.stages[stage_index][0].process(prev_res)
+
+            # clear everything but previous results
+            self.results = self.results[:result_index]
+            self.results.append(res)
+            return res
+
     def update_stage(self):
         img_copy = self.img.copy()
         
-        prev_res = self.results[self.current_stage_index]
-        res = self.stage.process(prev_res)
-
-        self.results[self.current_stage_index + 1] = res
-
-        preview = self.stage.preview(res, img_copy)
+        res = self.get_result(self.current_stage_index, True)
+        preview, hint = self.stage.preview(res, img_copy)
         cv2.imshow(window, preview)
 
     def show_stage(self):
@@ -216,22 +230,44 @@ class ImgFinder:
     def get_rects(self):
         return self.results[-1]
 
-    def progress_stage(self) -> bool:
-        if self.current_stage_index >= len(self.stages) - 1:
+    def set_stage(self, index) -> bool:
+        max_stage = len(self.stages)
+
+        if index >= max_stage:
             self.output_result()
-            print(self.get_rects())
             return False
+
+        index = max(0, index)
+        self.current_stage_index = index
+        self.show_stage()
+        return True
+
+    def progress_stage(self, forward: bool, skip: bool = False) -> bool:
+        increment = 1 if forward else -1
+
+        if not skip:
+            return self.set_stage(self.current_stage_index + increment)
         else:
-            self.current_stage_index += 1
-            self.show_stage()
-            return True
+            i = self.current_stage_index + increment
+            while not self.stages[i][1]:
+                i += increment
+            return self.set_stage(i)
 
     def output_result(self):
         self.finish_callback(self.get_rects())
 
     def handle_event(self, event: int) -> bool:
-        if event == 13:
-            return self.progress_stage()
+        if event == 13: # Enter
+            return self.progress_stage(True, True)
+        elif event == 8: # Backspace
+            return self.progress_stage(False, True)
+        elif event == 110: # n
+            return self.progress_stage(True, False)
+        elif event == 98: # b
+            return self.progress_stage(False, False)
+        elif event >= 49 and event <= 57: # 1-9
+            stage = event - 49
+            return self.set_stage(stage)
         return True
 
     def handle_events(self):
