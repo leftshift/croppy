@@ -185,6 +185,9 @@ class ImgFinder:
 
     def trackbarCallback(self, field: str):
         def callback(val):
+            prev_val = getattr(self.stage, field, val)
+            if prev_val == val:
+                return
             setattr(self.stage, field, val)
             self.update_stage()
         return callback
@@ -193,8 +196,9 @@ class ImgFinder:
         for field in fields(self.stage):
             m = field.metadata
             if m['expose']:
+                current_value = getattr(self.stage, field.name)
                 cv2.createTrackbar(
-                        field.name, window, field.default, m['max'],
+                        field.name, window, current_value, m['max'],
                         self.trackbarCallback(field.name))
 
     def get_result(self, stage_index: int, refresh: bool = False):
