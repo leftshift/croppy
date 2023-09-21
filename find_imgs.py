@@ -8,6 +8,11 @@ import numpy as np
 
 Rect = namedtuple('Rect', ['x', 'y', 'w', 'h'])
 
+def rect_contains(rect: Rect, point: tuple[int, int]):
+    x, y = point
+    return (rect.x <= x and rect.x + rect.w >= x and
+            rect.y <= y and rect.y + rect.h >= y)
+
 @dataclass
 class Stage(ABC):
     """Base class for a processing stage.
@@ -39,6 +44,11 @@ class Stage(ABC):
             hint -- optional hint text that will be shown at the top of the window
         """
         pass
+
+    def process_input(self, event: int):
+        """Process arbitrary input event.
+        By default, do nothing.
+        """
 
 @dataclass
 class Binarize(Stage):
@@ -148,7 +158,7 @@ class ImgRects(Stage):
         'expose': True,
         'max': 500
         })
-    grow_height: int = field(default=50, metadata={
+    grow_height: int = field(default=100, metadata={
         'expose': True,
         'max': 500
         })
@@ -189,7 +199,6 @@ class ImgRects(Stage):
             cv2.putText(img, str(i), (r.x, r.y+r.h), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 4, (0,255,0), 8)
         hint = f"Found {len(picture_rects)} pictures"
         return (img, hint)
-
 
 class ImgFinder:
 
@@ -297,6 +306,17 @@ class ImgFinder:
     def output_result(self):
         self.finish_callback(self.get_rects())
 
+    def selectRectsManually(self):
+        cv2.destroyAllWindows()
+        rects = cv2.selectROIs(window, self.img)
+
+        outputRects = [Rect._make(r) for r in rects]
+        outputRects.sort(key=rect_sort_keyfn)
+        print(outputRects)
+        self.finish_callback(outputRects)
+        return False
+
+
     def handle_event(self, event: int) -> bool:
         if event == 13: # Enter
             return self.progress_stage(True, True)
@@ -306,9 +326,13 @@ class ImgFinder:
             return self.progress_stage(True, False)
         elif event == 98: # b
             return self.progress_stage(False, False)
+        elif event == 101: #e
+            return self.selectRectsManually()
         elif event >= 49 and event <= 57: # 1-9
             stage = event - 49
             return self.set_stage(stage)
+        else:
+            self.stage.process_input(event)
         return True
 
     def handle_events(self):
